@@ -1,0 +1,60 @@
+# mujoco-azure-offload configuration.
+# Every value here can be overridden on the CLI (see `offload run --help`).
+
+azure:
+  # Leave subscription_id blank to use your current `az account show` default.
+  subscription_id: ""
+  resource_group: "mjoff-rg"      # must already exist (see README setup)
+  region: "eastus"
+
+storage:
+  account: "mjoffstorage123"      # your storage account name (must already exist)
+  container: "mjoff"              # created by the tool if missing
+  # auth_mode: how the LOCAL tool reaches Blob data-plane.
+  #   auto = try az-login RBAC, fall back to account key (fetched via az, in-memory only)
+  #   rbac = require 'Storage Blob Data Contributor' on your az-login identity
+  #   key  = always use the account key
+  auth_mode: "auto"
+
+compute:
+  vm_size: "Standard_F72s_v2"     # 72 vCPU compute-optimized; great for CPU sweeps
+  # CHEAP TEST MACHINE: to shake out provisioning/watchdog/teardown without paying
+  # for 72 vCPUs, override on the CLI (see README "Cheap test run"):
+  #   --region polandcentral --vm-size Standard_F2s_v2 --max-budget 1 --max-wall-clock 25
+  # F2s_v2 is the cheapest SPOT size in Poland Central (~$0.018/hr, 2 vCPU/4 GiB) and
+  # uses the same F-family + spot path as production. (B-series has no Spot in
+  # polandcentral; cheapest dedicated test box is Standard_B2s ~$0.048/hr.)
+  image: "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest"
+  spot: true                      # low-priority/spot by default; --force-dedicated to override
+  max_spot_price: -1              # -1 = pay up to on-demand (evicted only on capacity)
+  # REQUIRED: resource id of the user-assigned managed identity created in setup.
+  # The VM uses it to (a) self-deallocate and (b) read/write Blob — no secrets.
+  managed_identity: "/subscriptions/<SUB>/resourceGroups/mjoff-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mjoff-watchdog-identity"
+  os_disk_size_gb: 64
+  # osmesa = pure-software (CPU) offscreen GL. These are GPU-less CPU VMs, so 'egl'
+  # has no device to bind; use 'osmesa' for headless .png/.mp4, or 'disable' to skip.
+  mujoco_gl: "osmesa"             # osmesa | egl | disable
+  nproc: 0                        # 0 = use all cores on the VM
+
+job:
+  job_module: "job"               # <module>.py in the bundle exposing the entry function
+  entry_function: "run_scenario"  # run_scenario(scenario: dict, workdir: str) -> dict
+  scenarios_file: "scenarios.json"
+
+limits:                           # hard cost-safety knobs
+  max_budget_usd: 5.0
+  max_wall_clock_min: 60
+  stuck_timeout_min: 10           # abort if no heartbeat for this long
+  boot_timeout_min: 15            # abort if no progress file appears (boot/install failed)
+  poll_interval_sec: 15
+  heartbeat_interval_sec: 10
+
+pricing:                          # only used if the Retail Prices API is unreachable
+  fallback_hourly_usd: 3.045      # F72s_v2 on-demand (approx, eastus)
+  fallback_spot_hourly_usd: 0.40
+  disk_hourly_usd: 0.012
+  ip_hourly_usd: 0.005
+  storage_flat_usd: 0.02
+
+tags:
+  owner: ""                       # optional; stamped on every resource

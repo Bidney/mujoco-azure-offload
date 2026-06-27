@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mujoco-azure-offload"
+version = "1.0.0"
+description = "Offload a CPU-heavy MuJoCo parameter sweep to a single Azure spot VM with hard cost-safety guarantees and cloud-side self-destruct."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Eugene Bidney" }]
+keywords = ["azure", "mujoco", "spot-vm", "hpc", "parameter-sweep", "cost-control", "simulation"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "pyyaml>=6.0",
+  "azure-identity>=1.15",
+  "azure-storage-blob>=12.19",
+]
+
+[project.urls]
+Homepage = "https://github.com/bidney/mujoco-azure-offload"
+Issues = "https://github.com/bidney/mujoco-azure-offload/issues"
+
+[project.scripts]
+offload = "azoffload.cli:main"
+
+[tool.setuptools]
+packages = ["azoffload"]
+
+[tool.setuptools.package-data]
+# the on-VM runner/worker/watchdog are shipped as data and embedded into cloud-init
+azoffload = ["remote/*.py", "remote/*.sh"]

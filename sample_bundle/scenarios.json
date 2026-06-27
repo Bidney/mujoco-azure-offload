@@ -1,0 +1,652 @@
+{
+  "scenarios": [
+    {
+      "id": 0,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 0
+    },
+    {
+      "id": 1,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 1
+    },
+    {
+      "id": 2,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 2
+    },
+    {
+      "id": 3,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 3
+    },
+    {
+      "id": 4,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 4
+    },
+    {
+      "id": 5,
+      "gravity": -9.81,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 5
+    },
+    {
+      "id": 6,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 6
+    },
+    {
+      "id": 7,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 7
+    },
+    {
+      "id": 8,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 8
+    },
+    {
+      "id": 9,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 9
+    },
+    {
+      "id": 10,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 10
+    },
+    {
+      "id": 11,
+      "gravity": -9.81,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 11
+    },
+    {
+      "id": 12,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 12
+    },
+    {
+      "id": 13,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 13
+    },
+    {
+      "id": 14,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 14
+    },
+    {
+      "id": 15,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 15
+    },
+    {
+      "id": 16,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 16
+    },
+    {
+      "id": 17,
+      "gravity": -9.81,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 17
+    },
+    {
+      "id": 18,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 18
+    },
+    {
+      "id": 19,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 19
+    },
+    {
+      "id": 20,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 20
+    },
+    {
+      "id": 21,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 21
+    },
+    {
+      "id": 22,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 22
+    },
+    {
+      "id": 23,
+      "gravity": -9.81,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 23
+    },
+    {
+      "id": 24,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 24
+    },
+    {
+      "id": 25,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 25
+    },
+    {
+      "id": 26,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 26
+    },
+    {
+      "id": 27,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 27
+    },
+    {
+      "id": 28,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 28
+    },
+    {
+      "id": 29,
+      "gravity": -5.0,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 29
+    },
+    {
+      "id": 30,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 30
+    },
+    {
+      "id": 31,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 31
+    },
+    {
+      "id": 32,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 32
+    },
+    {
+      "id": 33,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 33
+    },
+    {
+      "id": 34,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 34
+    },
+    {
+      "id": 35,
+      "gravity": -5.0,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 35
+    },
+    {
+      "id": 36,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 36
+    },
+    {
+      "id": 37,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 37
+    },
+    {
+      "id": 38,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 38
+    },
+    {
+      "id": 39,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 39
+    },
+    {
+      "id": 40,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 40
+    },
+    {
+      "id": 41,
+      "gravity": -5.0,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 41
+    },
+    {
+      "id": 42,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 42
+    },
+    {
+      "id": 43,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 43
+    },
+    {
+      "id": 44,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 44
+    },
+    {
+      "id": 45,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 45
+    },
+    {
+      "id": 46,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 46
+    },
+    {
+      "id": 47,
+      "gravity": -5.0,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 47
+    },
+    {
+      "id": 48,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 48
+    },
+    {
+      "id": 49,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 49
+    },
+    {
+      "id": 50,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 50
+    },
+    {
+      "id": 51,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 51
+    },
+    {
+      "id": 52,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 52
+    },
+    {
+      "id": 53,
+      "gravity": -12.0,
+      "damping": 0.02,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 53
+    },
+    {
+      "id": 54,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 54
+    },
+    {
+      "id": 55,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 55
+    },
+    {
+      "id": 56,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 56
+    },
+    {
+      "id": 57,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 57
+    },
+    {
+      "id": 58,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 58
+    },
+    {
+      "id": 59,
+      "gravity": -12.0,
+      "damping": 0.1,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 59
+    },
+    {
+      "id": 60,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 60
+    },
+    {
+      "id": 61,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 61
+    },
+    {
+      "id": 62,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 62
+    },
+    {
+      "id": 63,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 63
+    },
+    {
+      "id": 64,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 64
+    },
+    {
+      "id": 65,
+      "gravity": -12.0,
+      "damping": 0.3,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 65
+    },
+    {
+      "id": 66,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 66
+    },
+    {
+      "id": 67,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 67
+    },
+    {
+      "id": 68,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 68
+    },
+    {
+      "id": 69,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 0.6,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 69
+    },
+    {
+      "id": 70,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 0.5,
+      "steps": 4000,
+      "seed": 70
+    },
+    {
+      "id": 71,
+      "gravity": -12.0,
+      "damping": 0.6,
+      "ctrl_amp": 1.2,
+      "ctrl_freq": 1.5,
+      "steps": 4000,
+      "seed": 71
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Tool (controller) dependencies. The VM installs its own deps via cloud-init.
+pyyaml>=6.0
+azure-identity>=1.15
+azure-storage-blob>=12.19
+# Azure CLI ('az') must be installed separately and you must `az login` first.

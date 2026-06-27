@@ -1,0 +1,43 @@
+# ---- Secrets / local config — NEVER commit these ----
+.env
+*.env
+config.local.yaml          # put REAL subscription/account/identity here, not config.yaml
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+*.publishsettings
+.azure/
+azureauth.json
+*.secrets.*
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ---- Virtualenvs ----
+.venv/
+venv/
+env/
+jobenv/
+
+# ---- Tool outputs / scratch ----
+results/
+*.tar.gz
+blobroot*/
+
+# ---- Tooling caches ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+.vscode/
