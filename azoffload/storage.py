@@ -31,69 +31,94 @@ def _service_key(account: str, account_url: str) -> BlobServiceClient:
 
 
 def make_service(account: str, account_url: str, container: str, auth_mode: str):
-    """Return (BlobServiceClient, mode_label)."""
+    """Return (BlobServiceClient, mode_label). For 'auto', returns the RBAC client and
+    lets Store transparently fall back to the account key on a real authorization
+    failure (a pre-flight read probe can't see a missing *write* permission)."""
     if auth_mode == "key":
         return _service_key(account, account_url), "account-key(via az)"
-
-    svc = _service_rbac(account_url)
-    if auth_mode == "rbac":
-        return svc, "rbac(az-login)"
-
-    # auto: probe data-plane; fall back to key on an authorization failure.
-    try:
-        cc = svc.get_container_client(container)
-        try:
-            cc.get_container_properties()
-        except Exception as e:
-            if "ContainerNotFound" not in str(e) and "does not exist" not in str(e):
-                raise
-        return svc, "rbac(az-login)"
-    except Exception:
-        return _service_key(account, account_url), "account-key(via az)"
+    label = "rbac(az-login)" if auth_mode == "rbac" else "rbac(az-login) [auto->key if denied]"
+    return _service_rbac(account_url), label
 
 
 class Store:
-    def __init__(self, svc: BlobServiceClient, container: str, prefix: str):
+    def __init__(self, svc: BlobServiceClient, container: str, prefix: str,
+                 account: str = None, account_url: str = None, can_fallback_to_key: bool = False):
         self.cc = svc.get_container_client(container)
+        self.container = container
         self.prefix = prefix
+        self._account = account
+        self._account_url = account_url
+        self._can_fallback = can_fallback_to_key
+        self._fellback = False
 
     def _name(self, blob: str) -> str:
         return f"{self.prefix}/{blob}"
 
-    def ensure_container(self):
+    @staticmethod
+    def _is_authz_error(e) -> bool:
+        m = str(e)
+        return ("AuthorizationPermissionMismatch" in m or "AuthorizationFailure" in m
+                or "not authorized to perform this operation" in m)
+
+    def _switch_to_key(self) -> bool:
+        if self._fellback or not (self._can_fallback and self._account):
+            return False
         try:
-            self.cc.create_container()
+            self.cc = _service_key(self._account, self._account_url).get_container_client(self.container)
+            self._fellback = True
+            print("  blob auth     : RBAC write denied -> falling back to account-key(via az)")
+            return True
+        except Exception:
+            return False
+
+    def _retry(self, fn):
+        """Run fn; if it fails with an authorization error and we're allowed to, switch
+        to key auth once and retry."""
+        try:
+            return fn()
         except Exception as e:
-            if "ContainerAlreadyExists" not in str(e):
-                # Most likely already exists; surface only if a real error.
-                if "already exists" not in str(e).lower():
+            if self._is_authz_error(e) and self._switch_to_key():
+                return fn()
+            raise
+
+    def ensure_container(self):
+        def _do():
+            try:
+                self.cc.create_container()
+            except Exception as e:
+                if "AlreadyExists" not in str(e) and "already exists" not in str(e).lower():
                     raise
+        self._retry(_do)
 
     def upload_file(self, blob: str, path: str):
-        with open(path, "rb") as f:
-            self.cc.upload_blob(name=self._name(blob), data=f, overwrite=True)
+        def _do():
+            with open(path, "rb") as f:
+                self.cc.upload_blob(name=self._name(blob), data=f, overwrite=True)
+        self._retry(_do)
 
     def get_json(self, blob: str):
         try:
-            data = self.cc.download_blob(self._name(blob)).readall()
-            return json.loads(data)
+            return self._retry(lambda: json.loads(self.cc.download_blob(self._name(blob)).readall()))
         except Exception:
             return None
 
     def download(self, blob: str, dest: str) -> bool:
-        try:
+        def _do():
             data = self.cc.download_blob(self._name(blob)).readall()
             os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
             with open(dest, "wb") as f:
                 f.write(data)
             return True
+        try:
+            return self._retry(_do)
         except Exception:
             return False
 
     def purge_prefix(self) -> int:
         n = 0
         try:
-            for b in self.cc.list_blobs(name_starts_with=self.prefix + "/"):
+            blobs = self._retry(lambda: list(self.cc.list_blobs(name_starts_with=self.prefix + "/")))
+            for b in blobs:
                 try:
                     self.cc.delete_blob(b.name)
                     n += 1

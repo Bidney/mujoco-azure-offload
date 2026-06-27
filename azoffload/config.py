@@ -42,7 +42,12 @@ class Settings:
     boot_timeout_min: float = 15
     poll_interval_sec: int = 15
     heartbeat_interval_sec: int = 10
-    # pricing fallbacks (used only if Retail Prices API is unreachable)
+    # pricing fallbacks (used only if Retail Prices API is unreachable / rate-limited).
+    # Per-vCPU rates are scaled by the size's vCPU count so the estimate is sane for any
+    # size (not just F72). The absolute *_hourly values are a last resort if the vCPU
+    # count can't be parsed from the size name.
+    fallback_per_vcpu_hour: float = 0.05        # ~F/D-series on-demand per vCPU-hour
+    fallback_per_vcpu_hour_spot: float = 0.012  # ~F/D-series spot per vCPU-hour
     fallback_hourly_usd: float = 3.045
     fallback_spot_hourly_usd: float = 0.30
     disk_hourly_usd: float = 0.012      # ~64GB premium SSD
@@ -80,6 +85,8 @@ _PATHS = {
     "limits.boot_timeout_min": "boot_timeout_min",
     "limits.poll_interval_sec": "poll_interval_sec",
     "limits.heartbeat_interval_sec": "heartbeat_interval_sec",
+    "pricing.fallback_per_vcpu_hour": "fallback_per_vcpu_hour",
+    "pricing.fallback_per_vcpu_hour_spot": "fallback_per_vcpu_hour_spot",
     "pricing.fallback_hourly_usd": "fallback_hourly_usd",
     "pricing.fallback_spot_hourly_usd": "fallback_spot_hourly_usd",
     "pricing.disk_hourly_usd": "disk_hourly_usd",

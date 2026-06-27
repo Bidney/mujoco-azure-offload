@@ -414,6 +414,76 @@ def no_shell_true_in_source():
             assert "TOKEN" not in line, "SECURITY: token must not be logged"
 
 
+@test
+def fallback_price_size_aware():
+    from azoffload import cli
+    _eq(cli._vcpus_from_size("Standard_F2s_v2"), 2)
+    _eq(cli._vcpus_from_size("Standard_F16s_v2"), 16)
+    _eq(cli._vcpus_from_size("Standard_F72s_v2"), 72)
+    _eq(cli._vcpus_from_size("Standard_D2as_v5"), 2)
+    s = config.Settings(vm_size="Standard_F2s_v2", spot=True)
+    _eq(round(cli._fallback_price(s), 5), round(s.fallback_per_vcpu_hour_spot * 2, 5),
+        "spot fallback scales by vCPU")
+    s2 = config.Settings(vm_size="Standard_F72s_v2", spot=False)
+    _eq(round(cli._fallback_price(s2), 5), round(s2.fallback_per_vcpu_hour * 72, 5),
+        "on-demand fallback scales by vCPU")
+    s3 = config.Settings(vm_size="nonumberhere", spot=False)
+    _eq(cli._fallback_price(s3), s3.fallback_hourly_usd, "unparseable -> absolute fallback")
+
+
+@test
+def sku_unavailable_hint_text():
+    from azoffload import cli
+    s = config.Settings(vm_size="Standard_F2s_v2", region="polandcentral", spot=True)
+    h = cli._sku_unavailable_hint(s)
+    assert "force-dedicated" in h and "Standard_F2s_v2" in h and "polandcentral" in h
+    s.spot = False
+    h2 = cli._sku_unavailable_hint(s)
+    assert "force-dedicated" not in h2 and "region" in h2
+
+
+@test
+def store_rbac_to_key_fallback():
+    import os
+    import tempfile
+    from azoffload import storage
+
+    class CC:
+        def __init__(self, fail_first):
+            self.fail_first = fail_first
+            self.uploads = 0
+
+        def upload_blob(self, name=None, data=None, overwrite=False):
+            self.uploads += 1
+            if self.fail_first and self.uploads == 1:
+                raise Exception("This request is not authorized to perform this operation "
+                                "using this permission. ErrorCode:AuthorizationPermissionMismatch")
+
+    rbac_cc, key_cc = CC(fail_first=True), CC(fail_first=False)
+    svc = types.SimpleNamespace(get_container_client=lambda c: rbac_cc)
+    st = storage.Store(svc, "c", "p", account="a", account_url="u", can_fallback_to_key=True)
+    orig = storage._service_key
+    storage._service_key = lambda account, url: types.SimpleNamespace(get_container_client=lambda c: key_cc)
+    try:
+        p = os.path.join(tempfile.mkdtemp(), "f")
+        open(p, "w").write("x")
+        st.upload_file("blob", p)            # rbac 403 -> switch to key -> retry succeeds
+        assert st._fellback is True
+        _eq(rbac_cc.uploads, 1)
+        _eq(key_cc.uploads, 1)
+        # with fallback disabled, the authz error must propagate
+        st2 = storage.Store(types.SimpleNamespace(get_container_client=lambda c: CC(True)),
+                            "c", "p", can_fallback_to_key=False)
+        raised = False
+        try:
+            st2.upload_file("b", p)
+        except Exception:
+            raised = True
+        assert raised, "no fallback -> authz error should surface"
+    finally:
+        storage._service_key = orig
+
+
 # ----------------------------------------------------------------------------
 # End-to-end: run the REAL runner.py over the real MuJoCo job via fake Azure.
 def integration_runner():
