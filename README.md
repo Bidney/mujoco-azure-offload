@@ -29,8 +29,8 @@ expensive compute never keeps billing** — even if your laptop dies.
 
 ## How the cloud-side self-destruct works (and why it survives your laptop dying)
 
-The VM boots with a **user-assigned managed identity** and a cloud-init **watchdog**
-(`azoffload/remote/watchdog.sh`) started *first thing at boot*. The watchdog loops and
+The VM boots with a **managed identity** (system-assigned by default) and a cloud-init
+**watchdog** (`azoffload/remote/watchdog.sh`) started *first thing at boot*. The watchdog loops and
 **self-deallocates the VM via the Azure REST API** when any of these happen:
 
 1. the job finishes (writes a `COMPLETE` marker) — stop billing immediately, don't wait
@@ -58,109 +58,115 @@ even in the laptop-died case your spend is bounded by your budget.
 
 ## One-time setup
 
-Prerequisites: the **Azure CLI** (`az`) and Python 3.9+.
+Prerequisites: the **Azure CLI** (`az`) and Python 3.9+. In your terminal, sign in and
+select the subscription you want — the tool just uses whatever your session has active
+(it never asks for secrets, and prints the chosen subscription before doing anything):
 
 ```bash
-# 0) sign in interactively (the tool reuses THIS credential; it never asks for secrets)
 az login
-az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
+az account set --subscription "<YOUR_SUBSCRIPTION_ID>"   # the tool rides this session
+```
 
-# pick names/region
-RG=mjoff-rg
-LOC=eastus
-SA=mjoffstorage$RANDOM        # storage account names are global + lowercase
-ID=mjoff-watchdog-identity
+Create the only two persistent resources it needs (everything ephemeral is managed for you):
 
-# 1) resource group
+```bash
+RG=mjoff-rg; LOC=polandcentral; SA=mjoffstore$RANDOM   # storage names are global + lowercase
 az group create -n $RG -l $LOC
-
-# 2) storage account (the 'mjoff' container is auto-created on first run)
 az storage account create -n $SA -g $RG -l $LOC --sku Standard_LRS
 
-# 3) user-assigned managed identity the VM will run as
-az identity create -n $ID -g $RG -l $LOC
-ID_RESID=$(az identity show -n $ID -g $RG --query id -o tsv)
-ID_PRINCIPAL=$(az identity show -n $ID -g $RG --query principalId -o tsv)
+# let YOUR login write blobs over RBAC (so the controller needs no account key)
 SUB=$(az account show --query id -o tsv)
-
-# 4) roles for that identity:
-#    - Virtual Machine Contributor (scoped to the RG) -> lets the watchdog deallocate the VM
-#    - Storage Blob Data Contributor -> lets the job read the bundle / write results
-az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal \
-  --role "Virtual Machine Contributor" --scope "/subscriptions/$SUB/resourceGroups/$RG"
-az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" \
-  --scope "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$SA"
-
-# 5) (recommended) let YOUR user write blobs over RBAC too, so the controller needs no key:
 ME=$(az ad signed-in-user show --query id -o tsv)
 az role assignment create --assignee-object-id $ME --assignee-principal-type User \
   --role "Storage Blob Data Contributor" \
   --scope "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$SA"
 
-echo "managed_identity: $ID_RESID"   # paste into config.yaml -> compute.managed_identity
+echo "storage account: $SA"   # -> config.yaml storage.account
 ```
 
-> If you skip step 5, set `storage.auth_mode: auto` (the default) and the tool falls back
-> to the account **key** (fetched at runtime via `az`, kept in memory only).
->
-> **Spot quota:** make sure the subscription has *Spot* vCPU quota for the F-series in your
-> region (Portal → *Quotas*), or run with `--force-dedicated` (needs standard quota).
+**No managed identity to configure in the common case.** At launch the tool gives the VM
+a *system-assigned* identity and auto-grants it two tightly-scoped roles — deallocate on
+*only that VM*, blob on *only that run's container*. That just needs your login to be able
+to create role assignments (**Owner** or **User Access Administrator**, which you usually
+are on your own subscription). If you're not, see *Restricted environments* below.
 
-Then install the controller deps and fill in `config.yaml`:
+> If you skip the blob role above, `storage.auth_mode: auto` (default) falls back to the
+> account **key** (fetched at runtime via `az`, kept in memory only).
+>
+> **Spot quota:** ensure the subscription has *Spot* vCPU quota for the F-series in your
+> region (Portal → *Quotas*), or run with `--force-dedicated`.
+
+Install the controller and point it at your infra (identity stays out of config):
 
 ```bash
-pip install -r requirements.txt
-$EDITOR config.yaml   # set resource_group, region, storage.account, compute.managed_identity
+pip install -e .        # or: pip install -r requirements.txt
+$EDITOR config.yaml     # set azure.resource_group, azure.region, storage.account
+```
+
+### Restricted environments (can't create role assignments)
+
+If your login is Contributor-only, have an Owner pre-create a user-assigned identity once;
+then point the tool at it and it skips the run-time role grants:
+
+```bash
+ID=mjoff-watchdog-identity
+az identity create -n $ID -g $RG -l $LOC
+PRINC=$(az identity show -n $ID -g $RG --query principalId -o tsv)
+az role assignment create --assignee-object-id $PRINC --assignee-principal-type ServicePrincipal \
+  --role "Virtual Machine Contributor" --scope "/subscriptions/$SUB/resourceGroups/$RG"
+az role assignment create --assignee-object-id $PRINC --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$SA"
+az identity show -n $ID -g $RG --query id -o tsv   # -> config.yaml compute.managed_identity (or --managed-identity)
 ```
 
 ---
 
 ## Run it
 
-```bash
-# dry run: prints the itemized cost ceiling + the resources it WOULD create, makes nothing
-python offload.py run --dry-run
-
-# real run on the bundled MuJoCo sample (72 scenarios), with hard caps
-python offload.py run --bundle sample_bundle --max-budget 5 --max-wall-clock 60
-
-# non-interactive (skip the cost confirmation)
-python offload.py run --bundle sample_bundle --yes
-
-# force a dedicated (non-spot) VM
-python offload.py run --force-dedicated
-```
-
-### Cheap test run (Poland Central)
-
-To exercise the whole pipeline (provision → watchdog → monitor → teardown) for a few
-cents instead of paying for 72 vCPUs, run on the cheapest **spot** VM in Poland Central.
-It's an `F2s_v2` (2 vCPU / 4 GiB, ~**$0.018/hr** spot) — same F-family + spot/eviction
-path as production, just small:
+The subscription comes from your active `az` session — nothing to configure. Pick a
+machine per run with **`--cheap` / `--moderate` / `--expensive`** (sizes live in
+`config.yaml → tiers`), or `--vm-size`:
 
 ```bash
-python offload.py run \
-  --region polandcentral \
-  --vm-size Standard_F2s_v2 \
-  --nproc 2 \
-  --max-budget 1 --max-wall-clock 25 \
-  --bundle sample_bundle
+# dry run: itemized cost ceiling + what it WOULD create, makes nothing
+python offload.py run --dry-run --cheap
+
+# real run on the bundled MuJoCo sample, cheapest box, hard caps
+python offload.py run --cheap --max-budget 1 --max-wall-clock 25
+
+# bigger boxes
+python offload.py run --moderate          # Standard_F16s_v2
+python offload.py run --expensive         # Standard_F72s_v2
+
+# non-interactive / dedicated (non-spot)
+python offload.py run --cheap --yes
+python offload.py run --expensive --force-dedicated
 ```
 
-Expect ~5–8 min end-to-end (boot + pip install + the 72-scenario sweep on 2 cores),
-well under the caps; the itemized estimate will read well under $1.
-
-| Poland Central, cheapest | size | vCPU/RAM | price |
+| Tier | Default size | vCPU/RAM | Poland Central spot |
 |---|---|---|---|
-| **Spot (default)** ✅ | `Standard_F2s_v2` | 2 / 4 GiB | ~$0.018/hr |
-| Dedicated (`--force-dedicated`) | `Standard_B2s` | 2 / 4 GiB | ~$0.048/hr |
-| Absolute cheapest (1 GiB — may OOM installing mujoco) | `Standard_B1s` | 1 / 1 GiB | ~$0.012/hr |
+| `--cheap` | `Standard_F2s_v2` | 2 / 4 GiB | ~$0.018/hr |
+| `--moderate` | `Standard_F16s_v2` | 16 / 32 GiB | ~$0.14/hr |
+| `--expensive` | `Standard_F72s_v2` | 72 / 144 GiB | ~$0.65/hr |
 
-> Notes: **B-series has no Spot offering in Poland Central** (so spot picks the F/D
-> families). Your storage account + managed identity can stay in whatever region they're
-> already in — only the VM moves. Prices shown are live from the Retail Prices API on
-> 2026-06; the tool always re-checks at launch.
+### Cheap test run
+
+`--cheap` (region defaults to `polandcentral` in `config.yaml`) exercises the whole
+pipeline — provision → watchdog → monitor → teardown — for a couple of cents on the same
+F-family + spot/eviction path as production, just small:
+
+```bash
+python offload.py run --cheap --nproc 2 --max-budget 1 --max-wall-clock 25 --bundle sample_bundle
+```
+
+Expect ~5–8 min end-to-end (boot + pip install + the 72-scenario sweep on 2 cores), well
+under the caps; the itemized estimate reads well under $1.
+
+> **B-series has no Spot offering in Poland Central**, so spot uses the F/D families;
+> `--force-dedicated` there lands on `Standard_B2s` (~$0.048/hr). Your storage account can
+> live in any region — only the VM moves. Prices are live from the Retail Prices API
+> (checked 2026-06) and re-verified at launch.
 
 You'll see a live status line, e.g.:
 

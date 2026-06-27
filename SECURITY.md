@@ -16,8 +16,11 @@ embedded in cloud resources**:
   storage account key, which is fetched at runtime via `az` and held **in memory only** —
   never written to disk or logged.
 - **On the VM**, the job and the self-destruct watchdog authenticate with the VM's
-  **user-assigned managed identity** (tokens via IMDS). No keys, SAS tokens, or
-  connection strings are placed in cloud-init or environment files.
+  **managed identity** (system-assigned by default; tokens via IMDS). No keys, SAS tokens,
+  or connection strings are placed in cloud-init or environment files. By default the tool
+  grants that identity two **tightly-scoped** roles — *Virtual Machine Contributor* on
+  **only that VM** (self-deallocate) and *Storage Blob Data Contributor* on **only that
+  run's container** (blob I/O).
 - **Network exposure** is minimised: the VM is created with **no inbound NSG rules**
   (`--nsg-rule NONE`) — no SSH, no open ports. It is outbound-only.
 - **Cloud-init env values are `shlex`-quoted** so a config value cannot inject shell into
@@ -40,10 +43,14 @@ for your environment:
 - `.gitignore` blocks `*.env`, `*.pem`, `*.key`, `config.local.yaml`, `.azure/` and
   similar. Double-check `git status` before committing.
 
-## Least-privilege recommendation
+## Least-privilege notes
 
-The setup grants the VM's managed identity *Virtual Machine Contributor* on the resource
-group so the watchdog can deallocate the VM. To tighten this, define a **custom role**
-limited to `Microsoft.Compute/virtualMachines/deallocate/action` (+ read) and/or use a
-**dedicated resource group** for offload runs so the identity can only affect ephemeral
-resources.
+- **Default (system-assigned):** roles are scoped to a single VM and a single container,
+  so the identity can't touch any other resource — the tightest practical grant. The
+  trade-off is that *your* launching login must be able to create role assignments
+  (Owner / User Access Administrator).
+- **User-assigned override (restricted environments):** the documented pre-created
+  identity is granted *Virtual Machine Contributor* at **resource-group** scope (broader,
+  because the VM name isn't known until creation). If you use this path, prefer a
+  **dedicated resource group** for offload runs, or a **custom role** limited to
+  `Microsoft.Compute/virtualMachines/deallocate/action` (+ read).

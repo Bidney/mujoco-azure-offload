@@ -85,11 +85,46 @@ def config_load_override_validate():
     _eq(s2.spot, False, "force_dedicated must clear spot")
     _eq(s2.max_budget_usd, 12.5)
 
-    # missing required fields -> problems reported
+    # missing required fields -> problems reported; identity is NOT required anymore
     bad = config.Settings()
     probs = config.validate_for_run(bad)
     assert any("resource_group" in p for p in probs)
-    assert any("managed_identity" in p for p in probs)
+    assert any("account" in p for p in probs)
+    assert not any("managed_identity" in p for p in probs), "identity must be optional now"
+
+
+@test
+def tier_selection():
+    base = dict(subscription=None, resource_group=None, region=None, account=None,
+                container=None, nproc=None, managed_identity=None, max_budget=None,
+                max_wall_clock=None, stuck_timeout=None, force_dedicated=False)
+    s = config.apply_overrides(config.Settings(), types.SimpleNamespace(tier="cheap", vm_size=None, **base))
+    _eq(s.vm_size, "Standard_F2s_v2", "--cheap maps to tiers.cheap")
+    s2 = config.apply_overrides(config.Settings(), types.SimpleNamespace(tier="expensive", vm_size=None, **base))
+    _eq(s2.vm_size, "Standard_F72s_v2", "--expensive maps to tiers.expensive")
+    # explicit --vm-size beats a tier flag
+    s3 = config.apply_overrides(config.Settings(), types.SimpleNamespace(tier="cheap", vm_size="Standard_X", **base))
+    _eq(s3.vm_size, "Standard_X", "--vm-size overrides tier")
+
+
+@test
+def vm_create_identity_args():
+    from azoffload import vm, azcli
+    cap = {}
+    orig = azcli.json_out
+    azcli.json_out = lambda args: (cap.__setitem__("args", list(args)) or {"identity": {"principalId": "pid"}})
+    try:
+        s = config.Settings(resource_group="rg", region="r", account="a", vm_size="Standard_F2s_v2")
+        names = naming.resource_names("mjoff-x")
+        vm.create_vm(s, "mjoff-x", names, {"k": "v"}, "/tmp/ci", system_identity=True)
+        a = cap["args"]
+        _eq(a[a.index("--assign-identity") + 1], "[system]", "system-assigned uses [system]")
+        s.managed_identity = "/subs/x/id"
+        vm.create_vm(s, "mjoff-x", names, {"k": "v"}, "/tmp/ci", system_identity=False)
+        a = cap["args"]
+        _eq(a[a.index("--assign-identity") + 1], "/subs/x/id", "user-assigned uses the resource id")
+    finally:
+        azcli.json_out = orig
 
 
 @test
@@ -136,6 +171,13 @@ def cloudinit_valid_and_ordered():
         if wf["path"].endswith("watchdog.sh"):
             decoded = base64.b64decode(wf["content"]).decode()
             assert "deallocate_self" in decoded and "169.254.169.254" in decoded
+    assert "MJOFF_IDENTITY_CLIENT_ID" in env, "identity client id always present (empty for system)"
+    # a user-assigned client id propagates verbatim into the sourced env file
+    env2 = cloudinit.build_env(s, rid, naming.blob_prefix(rid), 3780, 600, 0, identity_client_id="abc-123")
+    doc2 = yaml.safe_load(cloudinit.render(env2))
+    envfile = next(base64.b64decode(w["content"]).decode()
+                   for w in doc2["write_files"] if w["path"].endswith("/env"))
+    assert "MJOFF_IDENTITY_CLIENT_ID=abc-123" in envfile
 
 
 @test

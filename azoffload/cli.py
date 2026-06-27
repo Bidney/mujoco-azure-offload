@@ -118,6 +118,10 @@ def cmd_run(s, args):
     nproc = s.nproc  # 0 => runner uses all cores
     total = _count_scenarios(bundle_dir, s.scenarios_file)
 
+    # Identity: blank managed_identity -> system-assigned + auto-roles (nothing in config).
+    system_identity = not s.managed_identity
+    identity_client_id = "" if system_identity else vm.get_identity_client_id(s.managed_identity)
+
     hourly_vm, price_src = _get_price(s)
     hourly_total = _hourly_total(s, hourly_vm)
 
@@ -136,7 +140,11 @@ def cmd_run(s, args):
     print(f"  subscription : {sub_name} ({sub_id})")
     print(f"  resource grp : {s.resource_group}   region: {s.region}")
     print(f"  storage      : {s.account}/{s.container}   prefix: {prefix}")
-    print(f"  VM           : {s.vm_size}  priority={'SPOT' if s.spot else 'DEDICATED'}")
+    tier_note = f" (--{args.tier})" if getattr(args, "tier", None) else ""
+    print(f"  VM           : {s.vm_size}{tier_note}  priority={'SPOT' if s.spot else 'DEDICATED'}")
+    id_desc = ("system-assigned + auto-roles (deallocate on this VM, blob on this container)"
+               if system_identity else f"user-assigned ({s.managed_identity.split('/')[-1]})")
+    print(f"  VM identity  : {id_desc}")
     print(f"  bundle       : {bundle_dir}  ({total} scenarios, nproc={nproc or 'all cores'})")
     print(f"  price source : {price_src}  -> ${hourly_vm:.4f}/hr (vm) ${hourly_total:.4f}/hr (all-in)")
     print("-" * 70)
@@ -154,7 +162,8 @@ def cmd_run(s, args):
     print("=" * 70)
 
     if args.dry_run:
-        env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc)
+        env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc,
+                              identity_client_id=identity_client_id)
         ci = cloudinit.render(env)
         print(f"[dry-run] cloud-init rendered ({len(ci)} bytes). No resources created.")
         print(f"[dry-run] would create: vm={names['vm']} ip={names['ip']} "
@@ -177,7 +186,8 @@ def cmd_run(s, args):
     print("  uploading bundle…")
     store.upload_file("input/bundle.tar.gz", bundle_tar)
 
-    env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc)
+    env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc,
+                              identity_client_id=identity_client_id)
     ci_path = os.path.join(tmp, "cloud-init.yaml")
     with open(ci_path, "w") as f:
         f.write(cloudinit.render(env))
@@ -205,12 +215,22 @@ def cmd_run(s, args):
     outcome = None
     try:
         print("  provisioning VM (this takes ~1-2 min)…")
-        vm.create_vm(s, run_id, names, tags, ci_path)
+        vm.create_vm(s, run_id, names, tags, ci_path, system_identity=system_identity)
         started_ts["t"] = time.time()  # billing clock starts ~ now
         try:
             vm.tag_aux_resources(s, names, tags)
         except Exception:
             pass
+        if system_identity:
+            try:
+                print("  granting the VM identity tightly-scoped roles (deallocate + blob)…")
+                vm.assign_identity_roles(s, sub_id, names)
+            except PermissionError as e:
+                _eprint(f"\n  ! {e}")
+                _eprint("  ! Without the deallocate role the VM can't self-destruct — aborting + tearing down.")
+                _eprint("  ! Fix: run as Owner/User Access Administrator, or pre-create a user-assigned")
+                _eprint("  !      identity (2 roles) and set compute.managed_identity. See README.")
+                raise
         print(f"  VM {names['vm']} created. Monitoring (poll {s.poll_interval_sec}s)…\n")
 
         lim = monitor.Limits(s, max_wall_sec)
@@ -343,6 +363,13 @@ def build_parser():
     r.add_argument("--account")
     r.add_argument("--container")
     r.add_argument("--vm-size")
+    tier_grp = r.add_mutually_exclusive_group()
+    tier_grp.add_argument("--cheap", action="store_const", const="cheap", dest="tier",
+                          help="use config.tiers.cheap (default Standard_F2s_v2)")
+    tier_grp.add_argument("--moderate", action="store_const", const="moderate", dest="tier",
+                          help="use config.tiers.moderate (default Standard_F16s_v2)")
+    tier_grp.add_argument("--expensive", action="store_const", const="expensive", dest="tier",
+                          help="use config.tiers.expensive (default Standard_F72s_v2)")
     r.add_argument("--nproc", type=int)
     r.add_argument("--managed-identity")
     r.add_argument("--max-budget", type=float, help="USD")
