@@ -15,6 +15,9 @@ expensive compute never keeps billing** — even if your laptop dies.
 > by a recorded real provision — do a small `--max-budget`-capped run first. See
 > [Disclaimer](#disclaimer).
 
+> 📖 **New here?** [**RUNBOOK.md**](RUNBOOK.md) is a start-to-finish guide: clone → set up
+> → dry-run → a real `--cheap` capped run → verify nothing is left billing.
+
 - **Compute:** one `Standard_F72s_v2` (72 vCPU) spot VM. The sweep fans out across all
   cores via per-scenario subprocesses. (Single VM chosen over Azure Batch for
   simplicity: no Batch account, one resource to reason about, and a self-contained
