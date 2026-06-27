@@ -1,5 +1,5 @@
 """Single-file config (config.yaml) + CLI overrides, flattened into Settings."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -19,10 +19,18 @@ class Settings:
     image: str = "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest"
     spot: bool = True                   # flipped off by --force-dedicated
     max_spot_price: float = -1          # -1 = pay up to on-demand (evict on capacity only)
-    managed_identity: str = ""          # resource id of user-assigned identity
+    # OPTIONAL: resource id of a user-assigned identity. Leave blank to let the tool
+    # give the VM a system-assigned identity and auto-grant it tightly-scoped roles.
+    managed_identity: str = ""
     os_disk_size_gb: int = 64
-    mujoco_gl: str = "egl"              # egl | osmesa | disable
+    mujoco_gl: str = "osmesa"           # osmesa | egl | disable
     nproc: int = 0                      # 0 = all cores on the VM
+    # named machine tiers selected by --cheap / --moderate / --expensive
+    tiers: dict = field(default_factory=lambda: {
+        "cheap": "Standard_F2s_v2",
+        "moderate": "Standard_F16s_v2",
+        "expensive": "Standard_F72s_v2",
+    })
     # job
     job_module: str = "job"
     entry_function: str = "run_scenario"
@@ -98,6 +106,8 @@ def load(path: str) -> Settings:
         val = _dig(raw, dotted)
         if val is not None:
             setattr(s, attr, val)
+    if isinstance(raw.get("tiers"), dict):
+        s.tiers = {**s.tiers, **{k: v for k, v in raw["tiers"].items() if v}}
     return s
 
 
@@ -116,6 +126,11 @@ def apply_overrides(s: Settings, args) -> Settings:
         "max_wall_clock": "max_wall_clock_min",
         "stuck_timeout": "stuck_timeout_min",
     }
+    # tier (--cheap/--moderate/--expensive) sets vm_size; an explicit --vm-size wins,
+    # so apply the tier first and let the loop's vm_size override it.
+    tier = getattr(args, "tier", None)
+    if tier:
+        s.vm_size = s.tiers.get(tier, s.vm_size)
     for arg_name, attr in m.items():
         val = getattr(args, arg_name, None)
         if val is not None:
@@ -134,11 +149,7 @@ def validate_for_run(s: Settings) -> list:
         problems.append("storage.account is required")
     if not s.region:
         problems.append("azure.region is required")
-    if not s.managed_identity:
-        problems.append(
-            "compute.managed_identity is required (resource id of the user-assigned "
-            "identity that lets the VM self-deallocate and read/write blobs)"
-        )
+    # managed_identity is OPTIONAL — blank means system-assigned + auto-roles.
     if s.max_budget_usd <= 0:
         problems.append("limits.max_budget_usd must be > 0")
     if s.max_wall_clock_min <= 0:

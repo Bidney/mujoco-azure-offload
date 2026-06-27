@@ -98,11 +98,69 @@ def _confirm(prompt):
         return False
 
 
+def _prompt(label, default, flag_hint, yes):
+    """Resolve a target value: interactive prompt (default pre-filled), or with
+    --yes fall back to the config default / error. Nothing is hardcoded."""
+    if yes:
+        if default:
+            return default
+        raise SystemExit(f"--yes set but {label} is unset; pass {flag_hint} or set it in config.")
+    try:
+        suffix = f" [{default}]" if default else ""
+        entered = input(f"  {label}{suffix}: ").strip()
+    except EOFError:
+        raise SystemExit(f"No interactive terminal to prompt for {label}; pass {flag_hint}.")
+    val = entered or default
+    if not val:
+        raise SystemExit(f"{label} is required.")
+    return val
+
+
+def resolve_and_confirm_subscription(s, args):
+    """Make the user explicitly choose the subscription before anything is created,
+    so resources can never land in an unintended subscription."""
+    explicit = args.subscription or s.subscription_id
+    if not explicit and getattr(args, "yes", False):
+        raise SystemExit("Refusing to run with --yes and no explicit subscription. "
+                         "Pass --subscription <id> so resources can't land in the wrong place.")
+    active = azcli.json_out(["account", "show"])
+    if not active:
+        raise SystemExit("Not logged in. Run `az login` first.")
+    chosen = explicit or _prompt("Subscription ID", active.get("id"), "--subscription", yes=False)
+    if chosen != active.get("id"):
+        azcli.run(["account", "set", "--subscription", chosen])
+    acct = azcli.json_out(["account", "show"])
+    if not acct or acct.get("id") != chosen:
+        raise SystemExit(f"Could not switch to subscription {chosen!r}. Check the id and `az login`.")
+    return acct.get("id"), acct.get("name")
+
+
+def resolve_machine(s, args):
+    """Pick the VM size: a tier flag / --vm-size wins; otherwise prompt (tier name
+    or an explicit size). With --yes, fall back to the config default."""
+    if args.vm_size or getattr(args, "tier", None):
+        return s.vm_size  # already applied by config.apply_overrides
+    if getattr(args, "yes", False):
+        return s.vm_size
+    print("  Machine (pick a tier name or type a size like Standard_F8s_v2):")
+    for name in ("cheap", "moderate", "expensive"):
+        print(f"      {name:<10} {s.tiers.get(name)}")
+    choice = _prompt("tier or size", "cheap", "--cheap/--moderate/--expensive/--vm-size", yes=False)
+    return s.tiers.get(choice, choice)   # tier name -> size, else treat input as a literal size
+
+
 # ----------------------------- run -----------------------------
 
 def cmd_run(s, args):
     bundle_dir = os.path.abspath(args.bundle)
-    sub_id, sub_name = _resolve_subscription(s)
+
+    print("Choose the target (nothing is created until you confirm the cost):")
+    sub_id, sub_name = resolve_and_confirm_subscription(s, args)
+    if args.resource_group is None:
+        s.resource_group = _prompt("Resource group", s.resource_group, "--resource-group", yes=args.yes)
+    if args.account is None:
+        s.account = _prompt("Storage account", s.account, "--account", yes=args.yes)
+    s.vm_size = resolve_machine(s, args)
 
     problems = config.validate_for_run(s) + _validate_bundle(s, bundle_dir)
     if problems:
@@ -117,6 +175,10 @@ def cmd_run(s, args):
     prefix = naming.blob_prefix(run_id)
     nproc = s.nproc  # 0 => runner uses all cores
     total = _count_scenarios(bundle_dir, s.scenarios_file)
+
+    # Identity: blank managed_identity -> system-assigned + auto-roles (nothing in config).
+    system_identity = not s.managed_identity
+    identity_client_id = "" if system_identity else vm.get_identity_client_id(s.managed_identity)
 
     hourly_vm, price_src = _get_price(s)
     hourly_total = _hourly_total(s, hourly_vm)
@@ -136,7 +198,11 @@ def cmd_run(s, args):
     print(f"  subscription : {sub_name} ({sub_id})")
     print(f"  resource grp : {s.resource_group}   region: {s.region}")
     print(f"  storage      : {s.account}/{s.container}   prefix: {prefix}")
-    print(f"  VM           : {s.vm_size}  priority={'SPOT' if s.spot else 'DEDICATED'}")
+    tier_note = f" (--{args.tier})" if getattr(args, "tier", None) else ""
+    print(f"  VM           : {s.vm_size}{tier_note}  priority={'SPOT' if s.spot else 'DEDICATED'}")
+    id_desc = ("system-assigned + auto-roles (deallocate on this VM, blob on this container)"
+               if system_identity else f"user-assigned ({s.managed_identity.split('/')[-1]})")
+    print(f"  VM identity  : {id_desc}")
     print(f"  bundle       : {bundle_dir}  ({total} scenarios, nproc={nproc or 'all cores'})")
     print(f"  price source : {price_src}  -> ${hourly_vm:.4f}/hr (vm) ${hourly_total:.4f}/hr (all-in)")
     print("-" * 70)
@@ -154,7 +220,8 @@ def cmd_run(s, args):
     print("=" * 70)
 
     if args.dry_run:
-        env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc)
+        env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc,
+                              identity_client_id=identity_client_id)
         ci = cloudinit.render(env)
         print(f"[dry-run] cloud-init rendered ({len(ci)} bytes). No resources created.")
         print(f"[dry-run] would create: vm={names['vm']} ip={names['ip']} "
@@ -177,7 +244,8 @@ def cmd_run(s, args):
     print("  uploading bundle…")
     store.upload_file("input/bundle.tar.gz", bundle_tar)
 
-    env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc)
+    env = cloudinit.build_env(s, run_id, prefix, watchdog_lifetime_sec, stuck_sec, nproc,
+                              identity_client_id=identity_client_id)
     ci_path = os.path.join(tmp, "cloud-init.yaml")
     with open(ci_path, "w") as f:
         f.write(cloudinit.render(env))
@@ -205,12 +273,22 @@ def cmd_run(s, args):
     outcome = None
     try:
         print("  provisioning VM (this takes ~1-2 min)…")
-        vm.create_vm(s, run_id, names, tags, ci_path)
+        vm.create_vm(s, run_id, names, tags, ci_path, system_identity=system_identity)
         started_ts["t"] = time.time()  # billing clock starts ~ now
         try:
             vm.tag_aux_resources(s, names, tags)
         except Exception:
             pass
+        if system_identity:
+            try:
+                print("  granting the VM identity tightly-scoped roles (deallocate + blob)…")
+                vm.assign_identity_roles(s, sub_id, names)
+            except PermissionError as e:
+                _eprint(f"\n  ! {e}")
+                _eprint("  ! Without the deallocate role the VM can't self-destruct — aborting + tearing down.")
+                _eprint("  ! Fix: run as Owner/User Access Administrator, or pre-create a user-assigned")
+                _eprint("  !      identity (2 roles) and set compute.managed_identity. See README.")
+                raise
         print(f"  VM {names['vm']} created. Monitoring (poll {s.poll_interval_sec}s)…\n")
 
         lim = monitor.Limits(s, max_wall_sec)
@@ -343,6 +421,13 @@ def build_parser():
     r.add_argument("--account")
     r.add_argument("--container")
     r.add_argument("--vm-size")
+    tier_grp = r.add_mutually_exclusive_group()
+    tier_grp.add_argument("--cheap", action="store_const", const="cheap", dest="tier",
+                          help="use config.tiers.cheap (default Standard_F2s_v2)")
+    tier_grp.add_argument("--moderate", action="store_const", const="moderate", dest="tier",
+                          help="use config.tiers.moderate (default Standard_F16s_v2)")
+    tier_grp.add_argument("--expensive", action="store_const", const="expensive", dest="tier",
+                          help="use config.tiers.expensive (default Standard_F72s_v2)")
     r.add_argument("--nproc", type=int)
     r.add_argument("--managed-identity")
     r.add_argument("--max-budget", type=float, help="USD")

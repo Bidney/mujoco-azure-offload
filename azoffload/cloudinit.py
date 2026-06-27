@@ -59,9 +59,13 @@ write_files:
 """
 
 
-def build_env(s, run_id, prefix, max_lifetime_sec, stuck_sec, nproc) -> dict:
+def build_env(s, run_id, prefix, max_lifetime_sec, stuck_sec, nproc,
+              identity_client_id="") -> dict:
     return {
         "MJOFF_ACCOUNT_URL": s.account_url,
+        # empty for a system-assigned identity; set for a user-assigned one so the
+        # runner (ManagedIdentityCredential) and watchdog (IMDS) pick the right one.
+        "MJOFF_IDENTITY_CLIENT_ID": identity_client_id,
         "MJOFF_CONTAINER": s.container,
         "MJOFF_RUN_ID": run_id,
         "MJOFF_PREFIX": prefix,

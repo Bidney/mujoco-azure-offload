@@ -18,3 +18,8 @@ class AzureCliCredential(_Cred):
 
 class DefaultAzureCredential(_Cred):
     pass
+
+
+class ManagedIdentityCredential(_Cred):
+    def __init__(self, *a, client_id=None, **k):
+        self.client_id = client_id

@@ -18,8 +18,11 @@ set -a; [ -f "$ENV_FILE" ] && . "$ENV_FILE"; set +a
 LOG() { echo "[$(date -u +%FT%TZ)] watchdog: $*"; }
 
 imds_token() {
+  # append &client_id=... only for a user-assigned identity; empty -> system-assigned
+  local q=""
+  [ -n "${MJOFF_IDENTITY_CLIENT_ID:-}" ] && q="&client_id=${MJOFF_IDENTITY_CLIENT_ID}"
   curl -s -m 10 -H "Metadata:true" \
-    "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" \
+    "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/${q}" \
     | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])" 2>/dev/null
 }
 

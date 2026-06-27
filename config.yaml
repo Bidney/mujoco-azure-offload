@@ -2,13 +2,14 @@
 # Every value here can be overridden on the CLI (see `offload run --help`).
 
 azure:
-  # Leave subscription_id blank to use your current `az account show` default.
-  subscription_id: ""
-  resource_group: "mjoff-rg"      # must already exist (see README setup)
-  region: "eastus"
+  # Leave blank to use whatever subscription your terminal's `az login` has active
+  # (the tool prints which one in the plan before doing anything). Override: --subscription.
+  subscription_id: ""             # never hardcoded — the run command asks you to confirm it
+  resource_group: ""              # asked at run time (or --resource-group)
+  region: "polandcentral"         # where VMs are created (override with --region)
 
 storage:
-  account: "mjoffstorage123"      # your storage account name (must already exist)
+  account: ""                     # asked at run time (or --account)
   container: "mjoff"              # created by the tool if missing
   # auth_mode: how the LOCAL tool reaches Blob data-plane.
   #   auto = try az-login RBAC, fall back to account key (fetched via az, in-memory only)
@@ -17,24 +18,32 @@ storage:
   auth_mode: "auto"
 
 compute:
-  vm_size: "Standard_F72s_v2"     # 72 vCPU compute-optimized; great for CPU sweeps
-  # CHEAP TEST MACHINE: to shake out provisioning/watchdog/teardown without paying
-  # for 72 vCPUs, override on the CLI (see README "Cheap test run"):
-  #   --region polandcentral --vm-size Standard_F2s_v2 --max-budget 1 --max-wall-clock 25
-  # F2s_v2 is the cheapest SPOT size in Poland Central (~$0.018/hr, 2 vCPU/4 GiB) and
-  # uses the same F-family + spot path as production. (B-series has no Spot in
-  # polandcentral; cheapest dedicated test box is Standard_B2s ~$0.048/hr.)
+  # Default size when no tier flag is given. Pick a machine per run with
+  # --cheap / --moderate / --expensive (mapped under `tiers:` below), or --vm-size.
+  vm_size: "Standard_F16s_v2"
   image: "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest"
   spot: true                      # low-priority/spot by default; --force-dedicated to override
   max_spot_price: -1              # -1 = pay up to on-demand (evicted only on capacity)
-  # REQUIRED: resource id of the user-assigned managed identity created in setup.
-  # The VM uses it to (a) self-deallocate and (b) read/write Blob — no secrets.
-  managed_identity: "/subscriptions/<SUB>/resourceGroups/mjoff-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mjoff-watchdog-identity"
+  # Identity for the VM (self-deallocate + blob). Leave BLANK (recommended): the tool
+  # gives the VM a system-assigned identity and auto-grants two tightly-scoped roles
+  # (deallocate on just this VM, blob on just this run's container). Requires your
+  # login to be able to create role assignments (Owner / User Access Administrator).
+  # If it can't, pre-create a user-assigned identity + roles and put its resource id
+  # here instead (see README "Restricted environments").
+  managed_identity: ""
   os_disk_size_gb: 64
   # osmesa = pure-software (CPU) offscreen GL. These are GPU-less CPU VMs, so 'egl'
   # has no device to bind; use 'osmesa' for headless .png/.mp4, or 'disable' to skip.
   mujoco_gl: "osmesa"             # osmesa | egl | disable
   nproc: 0                        # 0 = use all cores on the VM
+
+# Machine tiers selected by --cheap / --moderate / --expensive. Remap freely.
+# Poland Central prices (live-checked at launch): F2s_v2 ~$0.018/hr spot (2 vCPU),
+# F16s_v2 ~$0.14/hr spot (16 vCPU), F72s_v2 ~$0.65/hr spot (72 vCPU).
+tiers:
+  cheap: "Standard_F2s_v2"
+  moderate: "Standard_F16s_v2"
+  expensive: "Standard_F72s_v2"
 
 job:
   job_module: "job"               # <module>.py in the bundle exposing the entry function

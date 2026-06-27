@@ -19,7 +19,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from azure.storage.blob import ContainerClient
 
 
@@ -48,7 +48,9 @@ JOBENV = env("MJOFF_JOBENV", os.path.join(BASE, "jobenv"))
 WORKER = env("MJOFF_WORKER", os.path.join(BASE, "worker.py"))
 LOG_PATH = os.path.join(BASE, "runner.boot.log")
 
-cred = DefaultAzureCredential()
+IDENTITY_CLIENT_ID = env("MJOFF_IDENTITY_CLIENT_ID", "")
+cred = (ManagedIdentityCredential(client_id=IDENTITY_CLIENT_ID)
+        if IDENTITY_CLIENT_ID else DefaultAzureCredential())
 cc = ContainerClient(ACCOUNT_URL, CONTAINER, credential=cred)
 
 _state = {
@@ -157,7 +159,18 @@ def run():
     touch(RUNNER_STARTED)
     set_state(state="installing")
     log(f"downloading bundle (nproc={NPROC})")
-    download("input/bundle.tar.gz", os.path.join(BASE, "bundle.tar.gz"))
+    # Retry: a freshly-granted system-assigned identity's RBAC can take a minute or
+    # two to propagate, so the first blob read may 403 before it's effective.
+    for attempt in range(1, 25):
+        try:
+            download("input/bundle.tar.gz", os.path.join(BASE, "bundle.tar.gz"))
+            break
+        except Exception as e:
+            if attempt >= 24:
+                raise
+            log(f"bundle download failed (attempt {attempt}; RBAC may be propagating): {e}")
+            touch(HEARTBEAT)   # keep the watchdog from declaring 'stuck' during the wait
+            time.sleep(15)
     if os.path.exists(BUNDLE_DIR):
         shutil.rmtree(BUNDLE_DIR)
     os.makedirs(BUNDLE_DIR)
