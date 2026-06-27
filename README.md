@@ -96,11 +96,11 @@ are on your own subscription). If you're not, see *Restricted environments* belo
 > **Spot quota:** ensure the subscription has *Spot* vCPU quota for the F-series in your
 > region (Portal → *Quotas*), or run with `--force-dedicated`.
 
-Install the controller and point it at your infra (identity stays out of config):
+Install the controller. Subscription, resource group, storage account, machine and
+identity all stay **out of config** — `run` asks you to confirm them each time:
 
 ```bash
 pip install -e .        # or: pip install -r requirements.txt
-$EDITOR config.yaml     # set azure.resource_group, azure.region, storage.account
 ```
 
 ### Restricted environments (can't create role assignments)
@@ -124,9 +124,12 @@ az identity show -n $ID -g $RG --query id -o tsv   # -> config.yaml compute.mana
 
 ## Run it
 
-The subscription comes from your active `az` session — nothing to configure. Pick a
-machine per run with **`--cheap` / `--moderate` / `--expensive`** (sizes live in
-`config.yaml → tiers`), or `--vm-size`:
+`run` interactively asks you to confirm the **subscription**, **resource group**,
+**storage account**, and **machine** before it creates anything — so nothing is hardcoded
+and resources can't land somewhere unintended. Supply any as a flag to skip its prompt
+(`--subscription`, `--resource-group`, `--account`, `--cheap`/`--moderate`/`--expensive`/`--vm-size`);
+`--yes` runs non-interactively and requires them as flags. Machine sizes for the tier
+flags live in `config.yaml → tiers`:
 
 ```bash
 # dry run: itemized cost ceiling + what it WOULD create, makes nothing

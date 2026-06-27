@@ -98,11 +98,69 @@ def _confirm(prompt):
         return False
 
 
+def _prompt(label, default, flag_hint, yes):
+    """Resolve a target value: interactive prompt (default pre-filled), or with
+    --yes fall back to the config default / error. Nothing is hardcoded."""
+    if yes:
+        if default:
+            return default
+        raise SystemExit(f"--yes set but {label} is unset; pass {flag_hint} or set it in config.")
+    try:
+        suffix = f" [{default}]" if default else ""
+        entered = input(f"  {label}{suffix}: ").strip()
+    except EOFError:
+        raise SystemExit(f"No interactive terminal to prompt for {label}; pass {flag_hint}.")
+    val = entered or default
+    if not val:
+        raise SystemExit(f"{label} is required.")
+    return val
+
+
+def resolve_and_confirm_subscription(s, args):
+    """Make the user explicitly choose the subscription before anything is created,
+    so resources can never land in an unintended subscription."""
+    explicit = args.subscription or s.subscription_id
+    if not explicit and getattr(args, "yes", False):
+        raise SystemExit("Refusing to run with --yes and no explicit subscription. "
+                         "Pass --subscription <id> so resources can't land in the wrong place.")
+    active = azcli.json_out(["account", "show"])
+    if not active:
+        raise SystemExit("Not logged in. Run `az login` first.")
+    chosen = explicit or _prompt("Subscription ID", active.get("id"), "--subscription", yes=False)
+    if chosen != active.get("id"):
+        azcli.run(["account", "set", "--subscription", chosen])
+    acct = azcli.json_out(["account", "show"])
+    if not acct or acct.get("id") != chosen:
+        raise SystemExit(f"Could not switch to subscription {chosen!r}. Check the id and `az login`.")
+    return acct.get("id"), acct.get("name")
+
+
+def resolve_machine(s, args):
+    """Pick the VM size: a tier flag / --vm-size wins; otherwise prompt (tier name
+    or an explicit size). With --yes, fall back to the config default."""
+    if args.vm_size or getattr(args, "tier", None):
+        return s.vm_size  # already applied by config.apply_overrides
+    if getattr(args, "yes", False):
+        return s.vm_size
+    print("  Machine (pick a tier name or type a size like Standard_F8s_v2):")
+    for name in ("cheap", "moderate", "expensive"):
+        print(f"      {name:<10} {s.tiers.get(name)}")
+    choice = _prompt("tier or size", "cheap", "--cheap/--moderate/--expensive/--vm-size", yes=False)
+    return s.tiers.get(choice, choice)   # tier name -> size, else treat input as a literal size
+
+
 # ----------------------------- run -----------------------------
 
 def cmd_run(s, args):
     bundle_dir = os.path.abspath(args.bundle)
-    sub_id, sub_name = _resolve_subscription(s)
+
+    print("Choose the target (nothing is created until you confirm the cost):")
+    sub_id, sub_name = resolve_and_confirm_subscription(s, args)
+    if args.resource_group is None:
+        s.resource_group = _prompt("Resource group", s.resource_group, "--resource-group", yes=args.yes)
+    if args.account is None:
+        s.account = _prompt("Storage account", s.account, "--account", yes=args.yes)
+    s.vm_size = resolve_machine(s, args)
 
     problems = config.validate_for_run(s) + _validate_bundle(s, bundle_dir)
     if problems:

@@ -4,12 +4,12 @@
 azure:
   # Leave blank to use whatever subscription your terminal's `az login` has active
   # (the tool prints which one in the plan before doing anything). Override: --subscription.
-  subscription_id: ""
-  resource_group: "mjoff-rg"      # must already exist (see README setup)
-  region: "polandcentral"
+  subscription_id: ""             # never hardcoded — the run command asks you to confirm it
+  resource_group: ""              # asked at run time (or --resource-group)
+  region: "polandcentral"         # where VMs are created (override with --region)
 
 storage:
-  account: "mjoffstorage123"      # your storage account name (must already exist)
+  account: ""                     # asked at run time (or --account)
   container: "mjoff"              # created by the tool if missing
   # auth_mode: how the LOCAL tool reaches Blob data-plane.
   #   auto = try az-login RBAC, fall back to account key (fetched via az, in-memory only)

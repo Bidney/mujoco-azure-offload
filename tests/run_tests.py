@@ -108,6 +108,48 @@ def tier_selection():
 
 
 @test
+def run_target_prompts_and_guards():
+    import builtins
+    from azoffload import azcli, cli
+    o_run, o_json, o_in = azcli.run, azcli.json_out, builtins.input
+    azcli.run = lambda args, check=True: types.SimpleNamespace(returncode=0, stdout="{}", stderr="")
+    try:
+        # --yes with no explicit subscription is refused (can't create in the wrong place)
+        azcli.json_out = lambda args: {"id": "sub-active", "name": "Active"}
+        raised = False
+        try:
+            cli.resolve_and_confirm_subscription(config.Settings(),
+                                                 types.SimpleNamespace(subscription=None, yes=True))
+        except SystemExit:
+            raised = True
+        assert raised, "must refuse --yes without an explicit subscription"
+
+        # explicit subscription is accepted
+        azcli.json_out = lambda args: {"id": "sub-xyz", "name": "Explicit"}
+        sid, _ = cli.resolve_and_confirm_subscription(
+            config.Settings(), types.SimpleNamespace(subscription="sub-xyz", yes=False))
+        _eq(sid, "sub-xyz")
+
+        # interactive prompts: RG typed in, tier name -> size
+        builtins.input = lambda prompt="": "my-rg"
+        _eq(cli._prompt("Resource group", "", "--resource-group", yes=False), "my-rg")
+        builtins.input = lambda prompt="": "moderate"
+        s = config.Settings()
+        _eq(cli.resolve_machine(s, types.SimpleNamespace(vm_size=None, tier=None, yes=False)),
+            s.tiers["moderate"])
+
+        # --yes with no default value errors instead of guessing
+        raised = False
+        try:
+            cli._prompt("Storage account", "", "--account", yes=True)
+        except SystemExit:
+            raised = True
+        assert raised, "--yes must error on an unset required value"
+    finally:
+        azcli.run, azcli.json_out, builtins.input = o_run, o_json, o_in
+
+
+@test
 def vm_create_identity_args():
     from azoffload import vm, azcli
     cap = {}
