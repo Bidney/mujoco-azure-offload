@@ -5,18 +5,32 @@ never blocks on a network hiccup, but a real number is preferred because the
 whole point of the pre-launch estimate is accuracy.
 """
 import json
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
 API = "https://prices.azure.com/api/retail/prices"
 
 
+def _get(url: str):
+    """GET + parse JSON, with a short backoff on HTTP 429 (the API rate-limits)."""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=20) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+
+
 def _fetch(filter_str: str) -> list:
     items = []
     url = f"{API}?$filter={urllib.parse.quote(filter_str)}&currencyCode='USD'"
     for _ in range(8):  # bounded paging
-        with urllib.request.urlopen(url, timeout=20) as r:
-            data = json.loads(r.read().decode())
+        data = _get(url)
         items += data.get("Items", [])
         nxt = data.get("NextPageLink")
         if not nxt:

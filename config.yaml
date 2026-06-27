@@ -58,8 +58,11 @@ limits:                           # hard cost-safety knobs
   poll_interval_sec: 15
   heartbeat_interval_sec: 10
 
-pricing:                          # only used if the Retail Prices API is unreachable
-  fallback_hourly_usd: 3.045      # F72s_v2 on-demand (approx, eastus)
+pricing:                          # only used if the Retail Prices API is unreachable/rate-limited
+  # scaled by the size's vCPU count -> sane estimate for any size (F2, F16, F72, D2, ...)
+  fallback_per_vcpu_hour: 0.05         # ~F/D-series on-demand per vCPU-hour
+  fallback_per_vcpu_hour_spot: 0.012   # ~F/D-series spot per vCPU-hour
+  fallback_hourly_usd: 3.045           # last resort if vCPU count can't be parsed
   fallback_spot_hourly_usd: 0.40
   disk_hourly_usd: 0.012
   ip_hourly_usd: 0.005

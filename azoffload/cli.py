@@ -8,6 +8,7 @@ Subcommands:
 import argparse
 import json
 import os
+import re
 import signal
 import sys
 import tempfile
@@ -32,20 +33,39 @@ def _resolve_subscription(s):
     return acct.get("id"), acct.get("name")
 
 
+def _vcpus_from_size(size):
+    """Best-effort vCPU count from an Azure size name (e.g. Standard_F16s_v2 -> 16)."""
+    m = re.search(r"_[A-Za-z]+(\d+)", size or "")
+    return int(m.group(1)) if m else 0
+
+
+def _fallback_price(s):
+    """Estimate $/hr when the pricing API is down, scaled by vCPU count so it's sane
+    for any size (not the hardcoded F72 price)."""
+    vcpus = _vcpus_from_size(s.vm_size)
+    if vcpus:
+        rate = s.fallback_per_vcpu_hour_spot if s.spot else s.fallback_per_vcpu_hour
+        return rate * vcpus
+    return s.fallback_spot_hourly_usd if s.spot else s.fallback_hourly_usd
+
+
 def _get_price(s):
-    if s.spot:
-        try:
-            p, src = pricing.get_vm_price(s.region, s.vm_size, spot=True)
-            return p, src
-        except Exception as e:
-            _eprint(f"  ! Retail Prices API failed ({e}); using fallback spot price.")
-            return s.fallback_spot_hourly_usd, "config-fallback"
     try:
-        p, src = pricing.get_vm_price(s.region, s.vm_size, spot=False)
-        return p, src
+        return pricing.get_vm_price(s.region, s.vm_size, spot=s.spot)
     except Exception as e:
-        _eprint(f"  ! Retail Prices API failed ({e}); using fallback on-demand price.")
-        return s.fallback_hourly_usd, "config-fallback"
+        est = _fallback_price(s)
+        n = _vcpus_from_size(s.vm_size)
+        _eprint(f"  ! Retail Prices API unavailable ({e}); estimating "
+                f"{'spot' if s.spot else 'on-demand'} from {n or '?'} vCPU -> ${est:.4f}/hr.")
+        return est, "config-fallback(per-vCPU)"
+
+
+def _sku_unavailable_hint(s):
+    if s.spot:
+        return (f"{s.vm_size} spot capacity is unavailable in {s.region} right now "
+                f"(spot is limited, especially on Visual Studio subscriptions). "
+                f"Try --force-dedicated, a different --region, or another --vm-size/tier.")
+    return f"{s.vm_size} is unavailable in {s.region}. Try a different --region or --vm-size."
 
 
 def _count_scenarios(bundle_dir, scenarios_file):
@@ -235,7 +255,8 @@ def cmd_run(s, args):
     # ---- storage ----
     svc, mode = storage.make_service(s.account, s.account_url, s.container, s.storage_auth)
     print(f"  blob auth     : {mode}")
-    store = storage.Store(svc, s.container, prefix)
+    store = storage.Store(svc, s.container, prefix, account=s.account, account_url=s.account_url,
+                          can_fallback_to_key=(s.storage_auth == "auto"))
     store.ensure_container()
 
     tmp = tempfile.mkdtemp(prefix="mjoff-")
@@ -304,8 +325,14 @@ def cmd_run(s, args):
         outcome = monitor.Outcome("aborted", "KeyboardInterrupt", 0,
                                   time.time() - (started_ts["t"] or time.time()), {})
     except Exception as e:
-        _eprint(f"\nError during run: {e}")
-        outcome = monitor.Outcome("error", str(e), 0,
+        msg = str(e)
+        if "SkuNotAvailable" in msg or "Capacity Restrictions" in msg:
+            detail = _sku_unavailable_hint(s)
+            _eprint("\n  ! " + detail)
+        else:
+            detail = msg
+            _eprint(f"\nError during run: {e}")
+        outcome = monitor.Outcome("error", detail, 0,
                                   time.time() - (started_ts["t"] or time.time()), {})
     finally:
         do_teardown(outcome.status if outcome else "unknown")
@@ -375,7 +402,9 @@ def cmd_teardown_only(s, args):
         if args.purge_blobs:
             try:
                 svc, _ = storage.make_service(s.account, s.account_url, s.container, s.storage_auth)
-                n = storage.Store(svc, s.container, naming.blob_prefix(run_id)).purge_prefix()
+                n = storage.Store(svc, s.container, naming.blob_prefix(run_id),
+                                  account=s.account, account_url=s.account_url,
+                                  can_fallback_to_key=(s.storage_auth == "auto")).purge_prefix()
                 print(f"  purged {n} blob(s) under {naming.blob_prefix(run_id)}")
             except Exception as e:
                 _eprint(f"  ! blob purge failed: {e}")
@@ -389,7 +418,9 @@ def cmd_teardown_only(s, args):
 def cmd_status(s, args):
     _resolve_subscription(s)
     svc, _ = storage.make_service(s.account, s.account_url, s.container, s.storage_auth)
-    store = storage.Store(svc, s.container, naming.blob_prefix(args.run_id))
+    store = storage.Store(svc, s.container, naming.blob_prefix(args.run_id),
+                          account=s.account, account_url=s.account_url,
+                          can_fallback_to_key=(s.storage_auth == "auto"))
     prog = store.get_json("progress/progress.json")
     if not prog:
         print("No progress file found (job not started, already cleaned, or wrong run-id).")
