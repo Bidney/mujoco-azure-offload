@@ -150,7 +150,8 @@ def resolve_and_confirm_subscription(s, args):
     if chosen != active.get("id"):
         azcli.run(["account", "set", "--subscription", chosen])
     acct = azcli.json_out(["account", "show"])
-    if not acct or acct.get("id") != chosen:
+    # `az account set` accepts a subscription name as well as an id.
+    if not acct or chosen not in (acct.get("id"), acct.get("name")):
         raise SystemExit(f"Could not switch to subscription {chosen!r}. Check the id and `az login`.")
     return acct.get("id"), acct.get("name")
 
@@ -199,6 +200,13 @@ def cmd_run(s, args):
     # Identity: blank managed_identity -> system-assigned + auto-roles (nothing in config).
     system_identity = not s.managed_identity
     identity_client_id = "" if system_identity else vm.get_identity_client_id(s.managed_identity)
+    if not system_identity and not identity_client_id:
+        # An empty client id would make the watchdog request an IMDS token as if the VM
+        # had a system-assigned identity (it won't), so it could never self-deallocate.
+        raise SystemExit(
+            f"could not resolve the clientId of managed identity {s.managed_identity!r} "
+            "(az identity show failed — check the resource id and your az login). "
+            "Refusing to launch: without it the VM's watchdog cannot self-deallocate.")
 
     hourly_vm, price_src = _get_price(s)
     hourly_total = _hourly_total(s, hourly_vm)
@@ -322,8 +330,9 @@ def cmd_run(s, args):
         outcome = monitor.monitor(store, lim, hourly_total, started_ts["t"], on_status, stop_flag)
         print()  # newline after the \r status line
     except KeyboardInterrupt:
-        outcome = monitor.Outcome("aborted", "KeyboardInterrupt", 0,
-                                  time.time() - (started_ts["t"] or time.time()), {})
+        elapsed = time.time() - (started_ts["t"] or time.time())
+        outcome = monitor.Outcome("aborted", "KeyboardInterrupt",
+                                  hourly_total * elapsed / 3600.0, elapsed, {})
     except Exception as e:
         msg = str(e)
         if "SkuNotAvailable" in msg or "Capacity Restrictions" in msg:
@@ -332,8 +341,9 @@ def cmd_run(s, args):
         else:
             detail = msg
             _eprint(f"\nError during run: {e}")
-        outcome = monitor.Outcome("error", detail, 0,
-                                  time.time() - (started_ts["t"] or time.time()), {})
+        elapsed = time.time() - (started_ts["t"] or time.time())
+        outcome = monitor.Outcome("error", detail,
+                                  hourly_total * elapsed / 3600.0, elapsed, {})
     finally:
         do_teardown(outcome.status if outcome else "unknown")
 
@@ -353,9 +363,16 @@ def cmd_run(s, args):
             _eprint("  ! results archive not found in blob (job may have aborted early).")
     else:
         # keep blobs on non-success so partial output/logs can be inspected
+        fetched = []
         for blob, dest in (("logs/runner.boot.log", "runner.boot.log"),
                            ("logs/watchdog.log", "watchdog.log")):
-            store.download(blob, os.path.join(tmp, dest))
+            path = os.path.join(tmp, dest)
+            if store.download(blob, path):
+                fetched.append(path)
+        if fetched:
+            print("  VM logs saved to:")
+            for path in fetched:
+                print("    " + path)
 
     # ---- one-line summary ----
     wall = (outcome.elapsed_sec / 60.0) if outcome else 0.0
@@ -380,6 +397,13 @@ def cmd_run(s, args):
 
 def cmd_teardown_only(s, args):
     _resolve_subscription(s)
+    if not s.resource_group:
+        # With an empty -g every `az ... delete` fails with "resource group '' could not
+        # be found", which the idempotent teardown treats as already-gone — the sweep
+        # would report success while deleting nothing.
+        raise SystemExit("azure.resource_group is required (pass --resource-group or set it in config).")
+    if args.purge_blobs and not s.account:
+        raise SystemExit("--purge-blobs needs storage.account (pass --account or set it in config).")
     if args.all:
         ids = teardown.find_runs(s)
         if not ids:
@@ -417,6 +441,8 @@ def cmd_teardown_only(s, args):
 
 def cmd_status(s, args):
     _resolve_subscription(s)
+    if not s.account:
+        raise SystemExit("storage.account is required (pass --account or set it in config).")
     svc, _ = storage.make_service(s.account, s.account_url, s.container, s.storage_auth)
     store = storage.Store(svc, s.container, naming.blob_prefix(args.run_id),
                           account=s.account, account_url=s.account_url,
