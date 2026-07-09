@@ -34,7 +34,10 @@ vm_resource_id() {
 
 deallocate_self() {
   LOG "initiating self-deallocate (reason: $1)"
-  for attempt in 1 2 3 4 5; do
+  # Retry for ~10 minutes: a guest power-off does NOT stop compute billing (the VM
+  # ends up 'Stopped', not 'Stopped (deallocated)'), so riding out a transient
+  # IMDS/ARM/network failure and landing the REST deallocate is strictly better.
+  for attempt in $(seq 1 40); do
     TOKEN=$(imds_token); RID=$(vm_resource_id)
     if [ -n "${TOKEN:-}" ] && [ -n "${RID:-}" ]; then
       CODE=$(curl -s -m 30 -o /dev/null -w "%{http_code}" -X POST \
@@ -45,9 +48,9 @@ deallocate_self() {
     else
       LOG "could not get IMDS token / resource id (attempt ${attempt})"
     fi
-    sleep 10
+    sleep 15
   done
-  LOG "REST deallocate failed; falling back to guest poweroff (billing may continue until controller deletes the VM)"
+  LOG "REST deallocate failed; falling back to guest poweroff (compute billing continues until the controller or teardown-only deletes the VM)"
   shutdown -h now || poweroff -f || true
 }
 
